@@ -1,0 +1,5 @@
+# Change these at your peril:
+export PROJECT_NAME=ds_digital_ads
+export REPO_NAME=ds_digital_ads
+export DESCRIPTION=surfacing insights from online ads
+export PROJECT_OPENNESS=public
