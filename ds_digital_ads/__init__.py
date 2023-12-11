@@ -17,6 +17,9 @@ def get_yaml_config(file_path: Path) -> Optional[dict]:
 # Define project base directory
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 
+# bucket info
+BUCKET_NAME = "ds-digital-ads"
+
 # Define log output locations
 info_out = str(PROJECT_DIR / "info.log")
 error_out = str(PROJECT_DIR / "errors.log")

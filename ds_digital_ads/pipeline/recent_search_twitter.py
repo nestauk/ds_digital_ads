@@ -1,6 +1,8 @@
 """
 Script to collect Twitter data from the past 7 days using the recent search endpoint, given a set of rules and query parameters.
 If data on a specific ruleset has been collected sometime in the past 7 days, only new data gets collected.
+
+python ds_digital_ads/pipeline/recent_search_twitter.py
 """
 
 import requests
@@ -12,23 +14,21 @@ import pandas as pd
 import os
 from dotenv import load_dotenv
 
-from ds_digital_ads.config.data_collection_parameters import (
+
+from ds_digital_ads.utils.data_collection_utils import (
+    DATA_COLLECTION_FOLDER,
+    ENDPOINT_URL,
     digital_ads_ruleset_twitter,
     query_parameters_twitter,
 )
 
-from ds_digital_ads.utils.data_collection_utils import (
+from ds_digital_ads.getters.data_getters import (
     dictionary_to_s3,
     read_json_from_s3,
     save_json_to_local_inputs_folder,
     read_json_from_local_path,
 )
-from ds_digital_ads import base_config, PROJECT_DIR
-
-
-ENDPOINT_URL = "https://api.twitter.com/2/tweets/search/recent"
-S3_BUCKET = base_config["S3_BUCKET"]
-DATA_COLLECTION_FOLDER = base_config["RECENT_SEARCH_TWITTER_S3_DATA_COLLECTION_FOLDER"]
+from ds_digital_ads import PROJECT_DIR, BUCKET_NAME
 
 
 def request_headers(bearer_token: str) -> dict:
@@ -127,7 +127,7 @@ def empty_data_dict() -> dict:
     return data
 
 
-def get_max_ids_json(s3_bucket, folder) -> dict:
+def get_max_ids_json(s3_bucket: str, folder: str) -> dict:
     """
     Gets max_tweet_id.json file if it exists. Otherwise, it creates one.
     This file contains information about the latest tweet ID collected for a specific
@@ -164,7 +164,10 @@ def get_max_ids_json(s3_bucket, folder) -> dict:
 
 
 def update_max_ids_json(
-    json_response, max_ids_json, query_tag, date_time_collection_start
+    json_response: dict,
+    max_ids_json: dict,
+    query_tag: str,
+    date_time_collection_start: datetime,
 ):
     """
     Updates dictionary with latest tweet IDs collected so far for a specific query tag:
@@ -198,19 +201,17 @@ def collect_and_process_twitter_data(
     folder: str,
     s3_bucket: str = None,
 ):
-    """
-    Collects, processes and saves twitter data following a set of rules and query parameters.
+    # Collects, processes and saves twitter data following a set of rules and query parameters.
 
-    If "max_tweet_id.json" exists on S3, it collects data since the last ID collected in a
-    previous instance. Otherwise, it collects data from the past 7 days.
+    # If "max_tweet_id.json" exists on S3, it collects data since the last ID collected in a
+    # previous instance. Otherwise, it collects data from the past 7 days.
 
-    Args:
-        bearer_token: Twitter bearer token credentials
-        rules: rules for collecting Twitter data. Each rules should contain "value" and "tag" keys
-        query_paramers: parameters for data collection
-        folder: path to folder where results are stored (within an S3 bucket or within the local inputs/ folder)
-        s3_bucket: s3 bucket where results are stored (if None, results are saved locally)
-    """
+    # Args:
+    #     bearer_token: Twitter bearer token credentials
+    #     rules: rules for collecting Twitter data. Each rules should contain "value" and "tag" keys
+    #     query_paramers: parameters for data collection
+    #     folder: path to folder where results are stored (within an S3 bucket or within the local inputs/ folder)
+    #     s3_bucket: s3 bucket where results are stored (if None, results are saved locally)
 
     # Authentication with bearer token
     headers = request_headers(bearer_token)
@@ -282,12 +283,16 @@ def collect_and_process_twitter_data(
 
 if __name__ == "__main__":
     load_dotenv()
-    bearer_token = os.environ.get("BEARER_TOKEN")
+
+    try:
+        bearer_token = os.environ["BEARER_TOKEN"]
+    except KeyError:
+        print("BEARER_TOKEN environment variable not set. Please set it and try again.")
 
     collect_and_process_twitter_data(
         bearer_token=bearer_token,
         rules=digital_ads_ruleset_twitter,
         query_params=query_parameters_twitter,
         folder=DATA_COLLECTION_FOLDER,
-        s3_bucket=S3_BUCKET,
+        s3_bucket=BUCKET_NAME,
     )

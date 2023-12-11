@@ -1,5 +1,3 @@
-# bucket info
-S3_BUCKET: "ds-digital-ads"
 # data collection folders
 RECENT_SEARCH_TWITTER_S3_DATA_COLLECTION_FOLDER: "data_collection/recent_search_twitter/"
 # test folders
