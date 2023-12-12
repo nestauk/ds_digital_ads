@@ -1,12 +1,36 @@
 """
 Data getters (and savers)
 """
-
+from fnmatch import fnmatch
 import json
-import io
-import boto3
+import pickle
+import gzip
 import os
-from ds_digital_ads import PROJECT_DIR
+
+import pandas as pd
+from pandas import DataFrame
+import boto3
+from decimal import Decimal
+import numpy
+import yaml
+import io
+
+from ds_digital_ads import logger, PROJECT_DIR
+
+
+class CustomJsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        elif isinstance(obj, numpy.integer):
+            return int(obj)
+        elif isinstance(obj, numpy.floating):
+            return float(obj)
+        elif isinstance(obj, numpy.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, set):
+            return list(obj)
+        return super(CustomJsonEncoder, self).default(obj)
 
 
 def get_s3_resource():
@@ -140,3 +164,26 @@ def read_json_from_local_path(file_path: str) -> dict:
         data = json.load(f)
 
     return data
+
+
+def get_s3_data_paths(bucket_name, root, file_types=["*.jsonl"]):
+    """
+    Get all paths to particular file types in a S3 root location
+
+    bucket_name: The S3 bucket name
+    root: The root folder to look for files in
+    file_types: List of file types to look for, or one
+    """
+    s3 = get_s3_resource()
+    if isinstance(file_types, str):
+        file_types = [file_types]
+
+    bucket = s3.Bucket(bucket_name)
+
+    s3_keys = []
+    for files in bucket.objects.filter(Prefix=root):
+        key = files.key
+        if any([fnmatch(key, pattern) for pattern in file_types]):
+            s3_keys.append(key)
+
+    return s3_keys
