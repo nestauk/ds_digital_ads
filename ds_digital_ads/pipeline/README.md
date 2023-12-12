@@ -14,7 +14,11 @@ To collect tweets from a defined list of gambling related twitter accounts in th
 python ds_digital_ads/pipeline/collect_tweets_flow.py run --production False
 ```
 
-To clean the raw collected tweets by: - concatenating .json files per twitter account into one main json; - creating a media table with image URLs and a media id key; - creating a core table with all tweets, tweet ids, media ids and their public metrics; - saving twitter images to S3.
+To clean the raw collected tweets by: 
+- concatenating .json files per twitter account into one main json;
+- creating a media table with image URLs and a media id key;
+- creating a core table with all tweets, tweet ids, media ids and their public metrics;
+- saving twitter images to S3.
 
 run the following command:
 
