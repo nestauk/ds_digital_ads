@@ -1,9 +1,9 @@
 """
-Flow to collect Twitter data from the last 7 using
-the all search endpoint, given a set of rules and query parameters.
+Flow to collect Twitter data from the last 30 days using
+the recent search endpoint, given a set of rules and query parameters.
 
 If data on a specific ruleset has already been collected sometime in the
-past 7 days, only new data gets collected.
+past 30 days, only new data gets collected.
 
 if you want to test the flow:
 python ds_digital_ads/pipeline/collect_tweets_flow.py run
@@ -265,7 +265,7 @@ class CollectTweetsFlow(FlowSpec):
                 created_at = datetime.strptime(
                     self.max_ids_json[query_tag]["created_at"], "%Y-%m-%dT%H:%M:%S.000Z"
                 )
-                if created_at + timedelta(7) > datetime.now():
+                if created_at + timedelta(30) > datetime.now():
                     self.query_parameters_twitter["since_id"] = self.max_ids_json[
                         query_tag
                     ]["newest_id"]

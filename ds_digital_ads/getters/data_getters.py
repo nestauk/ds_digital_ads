@@ -14,8 +14,30 @@ from decimal import Decimal
 import numpy
 import yaml
 import io
+from io import BytesIO
 
-from ds_digital_ads import logger, PROJECT_DIR
+from ds_digital_ads import logger, PROJECT_DIR, BUCKET_NAME
+from typing import List
+import requests
+
+
+def save_images_to_s3(
+    image_urls: List[str],
+    output_folder: str,
+):
+    """Save a list of image urls to S3.
+
+    Args:
+        image_urls (List[str]): List of image urls.
+    """
+    for image_url in image_urls:
+        request = requests.get(image_url)
+        if request.status_code == 200:
+            file_name = image_url.split("/")[-1]
+            images_file_path = os.path.join(output_folder, "images", file_name)
+            save_to_s3(BUCKET_NAME, request.content, images_file_path)
+        else:
+            print(f"Image {image_url} could not be downloaded.")
 
 
 class CustomJsonEncoder(json.JSONEncoder):
@@ -55,6 +77,13 @@ def save_to_s3(bucket_name, output_var, output_file_dir):
         obj.put(Body=gzip.compress(json.dumps(output_var).encode()))
     elif fnmatch(output_file_dir, "*.txt"):
         obj.put(Body=output_var)
+    elif (
+        fnmatch(output_file_dir, "*.jpg")
+        or fnmatch(output_file_dir, "*.png")
+        or fnmatch(output_file_dir, "*.jpeg")
+    ):
+        image_data = BytesIO(output_var)
+        obj.put(Body=image_data)
     else:
         obj.put(Body=json.dumps(output_var, cls=CustomJsonEncoder))
 
@@ -93,6 +122,16 @@ def load_s3_data(bucket_name, file_name):
     elif fnmatch(file_name, "*.pkl") or fnmatch(file_name, "*.pickle"):
         file = obj.get()["Body"].read().decode()
         return pickle.loads(file)
+    elif (
+        fnmatch(file_name, "*.jpg")
+        or fnmatch(file_name, "*.png")
+        or fnmatch(file_name, "*.jpeg")
+    ):
+        # Download the image from S3 into a BytesIO object
+        image_data = BytesIO()
+        obj.download_fileobj(image_data)
+        return image_data
+
     else:
         logger.error(
             'Function not supported for file type other than "*.csv", "*.parquet", "*.jsonl.gz", "*.jsonl", or "*.json"'

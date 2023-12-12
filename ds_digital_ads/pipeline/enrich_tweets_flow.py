@@ -3,16 +3,25 @@ Flow to enrich tweets by:
     - concatenating .json files per twitter account into one json;
     - creating a media table with image URLs and a media id key;
     - creating a core table with all tweets, tweet ids, media ids and their public metrics;
+    - saving twitter images to S3.
 
-To run the flow:
-
+if you want to test the flow:
 python ds_digital_ads/pipeline/enrich_tweets_flow.py run
+
+if you want to run the flow in production:
+python ds_digital_ads/pipeline/enrich_tweets_flow.py run --production True
 """
 from metaflow import FlowSpec, step, Parameter
 
 import pandas as pd
+import requests
+import os
+
+from typing import List
 
 from ds_digital_ads import BUCKET_NAME
+from ds_digital_ads.utils.data_collection_utils import PROCESSED_DATA_COLLECTION_FOLDER
+from ds_digital_ads.getters.data_getters import save_to_s3, save_images_to_s3
 
 
 class EnrichTweetsFlow(FlowSpec):
@@ -68,8 +77,14 @@ class EnrichTweetsFlow(FlowSpec):
         self.media_df["public_metrics"] = self.media_df["public_metrics"].apply(
             lambda x: x["view_count"] if isinstance(x, dict) else None
         )
+        self.media_df["url"].fillna(self.media_df["preview_image_url"], inplace=True)
+        self.media_df.drop(columns=["preview_image_url"], inplace=True)
+        self.media_df["image_name"] = self.media_df["url"].apply(
+            lambda x: x.split("/")[-1]
+        )
+        self.media_df.rename(columns={"media_key": "media_id"}, inplace=True)
 
-        self.next(self.create_core_table)
+        self.next(self.clean_core_data)
 
     @step
     def clean_core_data(self):
@@ -139,29 +154,36 @@ class EnrichTweetsFlow(FlowSpec):
         """
         Save dataset to s3.
         """
-        from ds_digital_ads.utils.data_collection_utils import PROCESSED_DATA_FOLDER
-        from ds_digital_ads.getters.data_getters import save_s3_data
-        import os
-
         from datetime import datetime
 
         date = datetime.now().strftime("%Y-%m-%d").replace("-", "")
 
         print("saving media table...")
 
-        media_path = os.path.join(PROCESSED_DATA_FOLDER, f"media_table_{date}.csv")
-        save_s3_data(BUCKET_NAME, self.media_df, media_path)
+        media_path = os.path.join(
+            PROCESSED_DATA_COLLECTION_FOLDER,
+            f"media_table_production_{str(self.production).lower()}_{date}.csv",
+        )
+        save_to_s3(BUCKET_NAME, self.media_df, media_path)
 
         print("saving core table...")
 
-        core_path = os.path.join(PROCESSED_DATA_FOLDER, f"core_table_{date}.csv")
-        save_s3_data(BUCKET_NAME, self.all_tweets_df, core_path)
+        core_path = os.path.join(
+            PROCESSED_DATA_COLLECTION_FOLDER,
+            f"core_table_{str(self.production).lower()}_{date}.csv",
+        )
+        save_to_s3(BUCKET_NAME, self.all_tweets_df, core_path)
 
         print("save concatenated tweets...")
         core_concat_path = os.path.join(
-            PROCESSED_DATA_FOLDER, f"all_tweets_{date}.json"
+            PROCESSED_DATA_COLLECTION_FOLDER,
+            f"all_tweets_{str(self.production).lower()}_{date}.json",
         )
-        save_s3_data(BUCKET_NAME, self.all_tweets, core_concat_path)
+        save_to_s3(BUCKET_NAME, self.all_tweets, core_concat_path)
+
+        print("save images...")
+        image_list = self.media_df["url"].unique().tolist()
+        save_images_to_s3(image_list, PROCESSED_DATA_COLLECTION_FOLDER)
 
         self.next(self.end)
 
