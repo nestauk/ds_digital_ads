@@ -183,7 +183,9 @@ class EnrichTweetsFlow(FlowSpec):
 
         print("save images...")
         image_list = self.media_df["url"].unique().tolist()
-        save_images_to_s3(image_list, PROCESSED_DATA_COLLECTION_FOLDER)
+        save_images_to_s3(
+            image_urls=image_list, output_folder=PROCESSED_DATA_COLLECTION_FOLDER
+        )
 
         self.next(self.end)
 

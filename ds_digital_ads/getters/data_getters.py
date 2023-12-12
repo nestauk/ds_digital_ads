@@ -21,25 +21,6 @@ from typing import List
 import requests
 
 
-def save_images_to_s3(
-    image_urls: List[str],
-    output_folder: str,
-):
-    """Save a list of image urls to S3.
-
-    Args:
-        image_urls (List[str]): List of image urls.
-    """
-    for image_url in image_urls:
-        request = requests.get(image_url)
-        if request.status_code == 200:
-            file_name = image_url.split("/")[-1]
-            images_file_path = os.path.join(output_folder, "images", file_name)
-            save_to_s3(BUCKET_NAME, request.content, images_file_path)
-        else:
-            print(f"Image {image_url} could not be downloaded.")
-
-
 class CustomJsonEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
@@ -88,6 +69,26 @@ def save_to_s3(bucket_name, output_var, output_file_dir):
         obj.put(Body=json.dumps(output_var, cls=CustomJsonEncoder))
 
     logger.info(f"Saved to s3://{bucket_name} + {output_file_dir} ...")
+
+
+def save_images_to_s3(
+    image_urls: List[str],
+    output_folder: str,
+    bucket_name: str = BUCKET_NAME,
+):
+    """Save a list of image urls to S3.
+
+    Args:
+        image_urls (List[str]): List of image urls.
+    """
+    for image_url in image_urls:
+        request = requests.get(image_url)
+        if request.status_code == 200:
+            file_name = image_url.split("/")[-1]
+            images_file_path = os.path.join(output_folder, "images", file_name)
+            save_to_s3(bucket_name, request.content, images_file_path)
+        else:
+            print(f"Image {image_url} could not be downloaded.")
 
 
 def load_s3_data(bucket_name, file_name):
