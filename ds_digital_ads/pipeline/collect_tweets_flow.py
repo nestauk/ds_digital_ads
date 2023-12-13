@@ -1,10 +1,17 @@
 """
-Script to collect Twitter data from the past 7 days using the recent search endpoint, given a set of rules and query parameters.
-If data on a specific ruleset has been collected sometime in the past 7 days, only new data gets collected.
+Flow to collect Twitter data from the last 7 days using
+the recent search endpoint, given a set of rules and query parameters.
 
-python ds_digital_ads/pipeline/recent_search_twitter.py
+If data on a specific ruleset has already been collected sometime in the
+past 7 days, only new data gets collected.
+
+if you want to test the flow:
+python ds_digital_ads/pipeline/collect_tweets_flow.py run
+
+if you want to run the flow in production:
+python ds_digital_ads/pipeline/collect_tweets_flow.py run --production True
+
 """
-
 import requests
 import time
 import random
@@ -14,21 +21,22 @@ import pandas as pd
 import os
 from dotenv import load_dotenv
 
-
 from ds_digital_ads.utils.data_collection_utils import (
-    DATA_COLLECTION_FOLDER,
+    RAW_DATA_COLLECTION_FOLDER,
     ENDPOINT_URL,
-    digital_ads_ruleset_twitter,
     query_parameters_twitter,
 )
 
 from ds_digital_ads.getters.data_getters import (
     dictionary_to_s3,
     read_json_from_s3,
-    save_json_to_local_inputs_folder,
     read_json_from_local_path,
 )
 from ds_digital_ads import PROJECT_DIR, BUCKET_NAME
+
+from metaflow import FlowSpec, step, Parameter
+
+load_dotenv()
 
 
 def request_headers(bearer_token: str) -> dict:
@@ -194,105 +202,126 @@ def update_max_ids_json(
     max_ids_json[query_tag]["collection_datetime"] = date_time_collection_start
 
 
-def collect_and_process_twitter_data(
-    bearer_token: str,
-    rules: list,
-    query_params: dict,
-    folder: str,
-    s3_bucket: str = None,
-):
-    # Collects, processes and saves twitter data following a set of rules and query parameters.
+class CollectTweetsFlow(FlowSpec):
+    production = Parameter("production", help="Run in production?", default=False)
+    bearer_token = Parameter(
+        "bearer_token",
+        help="Twitter bearer token",
+        default=os.environ.get("BEARER_TOKEN"),
+    )
 
-    # If "max_tweet_id.json" exists on S3, it collects data since the last ID collected in a
-    # previous instance. Otherwise, it collects data from the past 7 days.
-
-    # Args:
-    #     bearer_token: Twitter bearer token credentials
-    #     rules: rules for collecting Twitter data. Each rules should contain "value" and "tag" keys
-    #     query_paramers: parameters for data collection
-    #     folder: path to folder where results are stored (within an S3 bucket or within the local inputs/ folder)
-    #     s3_bucket: s3 bucket where results are stored (if None, results are saved locally)
-
-    # Authentication with bearer token
-    headers = request_headers(bearer_token)
-
-    # Date time when collection is starting
-    date_time_collection_start = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-
-    # Getting info about latest collected tweets
-    max_ids_json = get_max_ids_json(s3_bucket, folder)
-
-    # data collection for every possible rule
-    for i in range(len(rules)):
-        # starting with an empty dictionary to store all data
-        data = empty_data_dict()
-
-        # Altering query parameters to account for each rule
-        query_params["query"] = rules[i]["value"]
-        query_tag = rules[i]["tag"]
-
-        # Checking if we have info about the latest tweet ID collected for the query_tag
-        if (query_tag in max_ids_json.keys()) and (
-            "newest_id" in max_ids_json[query_tag].keys()
-        ):
-            # We only use the since_id param if that latest tweet ID collected was posted in the past 7 days
-            created_at = datetime.strptime(
-                max_ids_json[query_tag]["created_at"], "%Y-%m-%dT%H:%M:%S.000Z"
-            )
-            if created_at + timedelta(7) > datetime.now():
-                query_params["since_id"] = max_ids_json[query_tag]["newest_id"]
-        else:
-            max_ids_json[query_tag] = dict()
-
-        # Collecting and processing data
-        json_response = connect_to_endpoint(headers, query_params)
-        data = process_twitter_data(json_response, data)
-
-        # updating json with info about max tweet id collected, to be used next time we collect data
-        # note that first page of tweets contains the newest possible tweets
-        if "newest_id" in json_response["meta"].keys():
-            # Updating json with max tweet id collected
-            update_max_ids_json(
-                json_response, max_ids_json, query_tag, date_time_collection_start
-            )
-
-        # collect tweets from next pages
+    @step
+    def start(self):
         """
-        while "next_token" in json_response["meta"]:
-            query_params["next_token"] = json_response["meta"]["next_token"]
+        Initialises headers, max ids and collection start date.
+        """
+        from ds_digital_ads.utils.data_collection_utils import (
+            digital_ads_ruleset_twitter,
+        )
 
-            json_response = connect_to_endpoint(headers, query_params)
+        if self.bearer_token:
+            self.headers = request_headers(self.bearer_token)
+        else:
+            print(
+                "BEARER_TOKEN environment variable not set. Please set it and try again."
+            )
+
+        self.date_time_collection_start = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        self.max_ids_json = get_max_ids_json(BUCKET_NAME, RAW_DATA_COLLECTION_FOLDER)
+        self.query_parameters_twitter = query_parameters_twitter
+        self.digital_ads_ruleset_twitter = digital_ads_ruleset_twitter
+
+        self.query_parameters_twitter["max_results"] = 100 if self.production else 10
+        self.digital_ads_ruleset_twitter = (
+            self.digital_ads_ruleset_twitter
+            if self.production
+            else self.digital_ads_ruleset_twitter[:1]
+        )
+
+        self.next(self.collect_tweets)
+
+    @step
+    def collect_tweets(self):
+        """
+        Collects tweets per rules and query parameters and stores them in a dictionary
+            to s3.
+        """
+        for i in range(len(self.digital_ads_ruleset_twitter)):
+            # starting with an empty dictionary to store all data
+            print(f"fetching tweets for {i} query...")
+            data = empty_data_dict()
+
+            # Altering query parameters to account for each rule
+            self.query_parameters_twitter["query"] = self.digital_ads_ruleset_twitter[
+                i
+            ]["value"]
+            query_tag = self.digital_ads_ruleset_twitter[i]["tag"]
+
+            # Checking if we have info about the latest tweet ID collected for the query_tag
+            if (query_tag in self.max_ids_json.keys()) and (
+                "newest_id" in self.max_ids_json[query_tag].keys()
+            ):
+                # We only use the since_id param if that latest tweet ID collected was posted in the past 7 days
+                created_at = datetime.strptime(
+                    self.max_ids_json[query_tag]["created_at"], "%Y-%m-%dT%H:%M:%S.000Z"
+                )
+                if created_at + timedelta(7) > datetime.now():
+                    self.query_parameters_twitter["since_id"] = self.max_ids_json[
+                        query_tag
+                    ]["newest_id"]
+            else:
+                self.max_ids_json[query_tag] = dict()
+
+            # Collecting and processing data
+            json_response = connect_to_endpoint(
+                self.headers, self.query_parameters_twitter
+            )
             data = process_twitter_data(json_response, data)
-        """
 
-        # Defining a file name before storing the data
-        filename = f"recent_search_{query_tag}_{date_time_collection_start}.json"
+            # updating json with info about max tweet id collected, to be used next time we collect data
+            # note that first page of tweets contains the newest possible tweets
+            if "newest_id" in json_response["meta"].keys():
+                # Updating json with max tweet id collected
+                update_max_ids_json(
+                    json_response,
+                    self.max_ids_json,
+                    query_tag,
+                    self.date_time_collection_start,
+                )
 
-        # Saving data and max tweet id information to S3 or local folder
-        if s3_bucket is None:
-            save_json_to_local_inputs_folder(data, folder, filename)
-            save_json_to_local_inputs_folder(max_ids_json, folder, "max_tweet_id.json")
-        else:
-            dictionary_to_s3(data, s3_bucket, folder, filename)
-            dictionary_to_s3(max_ids_json, s3_bucket, folder, "max_tweet_id.json")
+            while "next_token" in json_response["meta"]:
+                query_parameters_twitter["next_token"] = json_response["meta"][
+                    "next_token"
+                ]
 
-        # Removing these from query parameters before collecting data for next rule
-        for key in ["query", "since_id"]:
-            query_params.pop(key, None)
+                json_response = connect_to_endpoint(
+                    self.headers, query_parameters_twitter
+                )
+                data = process_twitter_data(json_response, data)
+
+            filename = f"recent_search_{query_tag}_{self.date_time_collection_start}_production_{str(self.production).lower()}.json"
+            # Saving data and max tweet id information to S3 or local folder
+            print(f"saving tweets for {i} query...")
+
+            dictionary_to_s3(data, BUCKET_NAME, RAW_DATA_COLLECTION_FOLDER, filename)
+            dictionary_to_s3(
+                self.max_ids_json,
+                BUCKET_NAME,
+                RAW_DATA_COLLECTION_FOLDER,
+                "max_tweet_id.json",
+            )
+
+            # Removing these from query parameters before collecting data for next rule
+            for key in ["query", "since_id"]:
+                self.query_parameters_twitter.pop(key, None)
+
+        self.next(self.end)
+
+    @step
+    def end(self):
+        """Ends the flow"""
+        pass
 
 
 if __name__ == "__main__":
-    load_dotenv()
-
-    try:
-        bearer_token = os.environ["BEARER_TOKEN"]
-    except KeyError:
-        print("BEARER_TOKEN environment variable not set. Please set it and try again.")
-
-    collect_and_process_twitter_data(
-        bearer_token=bearer_token,
-        rules=digital_ads_ruleset_twitter,
-        query_params=query_parameters_twitter,
-        folder=DATA_COLLECTION_FOLDER,
-        s3_bucket=BUCKET_NAME,
-    )
+    CollectTweetsFlow()

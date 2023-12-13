@@ -1,12 +1,39 @@
 """
 Data getters (and savers)
 """
-
+from fnmatch import fnmatch
 import json
-import io
-import boto3
+import pickle
+import gzip
 import os
-from ds_digital_ads import PROJECT_DIR
+
+import pandas as pd
+from pandas import DataFrame
+import boto3
+from decimal import Decimal
+import numpy
+import yaml
+import io
+from io import BytesIO
+
+from ds_digital_ads import logger, PROJECT_DIR, BUCKET_NAME
+from typing import List
+import requests
+
+
+class CustomJsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        elif isinstance(obj, numpy.integer):
+            return int(obj)
+        elif isinstance(obj, numpy.floating):
+            return float(obj)
+        elif isinstance(obj, numpy.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, set):
+            return list(obj)
+        return super(CustomJsonEncoder, self).default(obj)
 
 
 def get_s3_resource():
@@ -31,10 +58,39 @@ def save_to_s3(bucket_name, output_var, output_file_dir):
         obj.put(Body=gzip.compress(json.dumps(output_var).encode()))
     elif fnmatch(output_file_dir, "*.txt"):
         obj.put(Body=output_var)
-    else:
+    elif (
+        fnmatch(output_file_dir, "*.jpg")
+        or fnmatch(output_file_dir, "*.png")
+        or fnmatch(output_file_dir, "*.jpeg")
+    ):
+        image_data = BytesIO(output_var)
+        obj.put(Body=image_data)
+    elif fnmatch(output_file_dir, "*.json"):
         obj.put(Body=json.dumps(output_var, cls=CustomJsonEncoder))
+    else:
+        logger.error(
+            'Function not supported for file type other than "*.csv", "*.parquet", "*.jsonl.gz", "*.jsonl", "*.json", "*.png", "*.jpeg".'
+        )
 
-    logger.info(f"Saved to s3://{bucket_name} + {output_file_dir} ...")
+
+def save_images_to_s3(
+    image_urls: List[str],
+    output_folder: str,
+    bucket_name: str = BUCKET_NAME,
+):
+    """Save a list of image urls to S3.
+
+    Args:
+        image_urls (List[str]): List of image urls.
+    """
+    for image_url in image_urls:
+        request = requests.get(image_url)
+        if request.status_code == 200:
+            file_name = image_url.split("/")[-1]
+            images_file_path = os.path.join(output_folder, "images", file_name)
+            save_to_s3(bucket_name, request.content, images_file_path)
+        else:
+            print(f"Image {image_url} could not be downloaded.")
 
 
 def load_s3_data(bucket_name, file_name):
@@ -69,6 +125,16 @@ def load_s3_data(bucket_name, file_name):
     elif fnmatch(file_name, "*.pkl") or fnmatch(file_name, "*.pickle"):
         file = obj.get()["Body"].read().decode()
         return pickle.loads(file)
+    elif (
+        fnmatch(file_name, "*.jpg")
+        or fnmatch(file_name, "*.png")
+        or fnmatch(file_name, "*.jpeg")
+    ):
+        # Download the image from S3 into a BytesIO object
+        image_data = BytesIO()
+        obj.download_fileobj(image_data)
+        return image_data
+
     else:
         logger.error(
             'Function not supported for file type other than "*.csv", "*.parquet", "*.jsonl.gz", "*.jsonl", or "*.json"'
@@ -140,3 +206,26 @@ def read_json_from_local_path(file_path: str) -> dict:
         data = json.load(f)
 
     return data
+
+
+def get_s3_data_paths(bucket_name, root, file_types=["*.jsonl"]):
+    """
+    Get all paths to particular file types in a S3 root location
+
+    bucket_name: The S3 bucket name
+    root: The root folder to look for files in
+    file_types: List of file types to look for, or one
+    """
+    s3 = get_s3_resource()
+    if isinstance(file_types, str):
+        file_types = [file_types]
+
+    bucket = s3.Bucket(bucket_name)
+
+    s3_keys = []
+    for files in bucket.objects.filter(Prefix=root):
+        key = files.key
+        if any([fnmatch(key, pattern) for pattern in file_types]):
+            s3_keys.append(key)
+
+    return s3_keys
