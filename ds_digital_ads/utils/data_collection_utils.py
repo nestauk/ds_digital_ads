@@ -1,8 +1,6 @@
 """
 Utils for twitter data collection and enrichment
 """
-cols_to_explode = ["attachments", "public_metrics", "referenced_tweets"]
-
 TWITTER_HANDLES = [
     "betway",
     "TNLUK",
@@ -18,7 +16,6 @@ TWITTER_HANDLES = [
     "Ladbrokes",
 ]
 
-# ENDPOINT_URL = "https://api.twitter.com/2/tweets/search/all" # we don't have access to this end point
 ENDPOINT_URL = "https://api.twitter.com/2/tweets/search/recent"
 
 RAW_DATA_COLLECTION_FOLDER = "data_collection/gambling_tweets/raw/"
