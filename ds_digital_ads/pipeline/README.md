@@ -23,7 +23,7 @@ To clean the raw collected tweets by:
 run the following command:
 
 ```
-python ds_digital_ads/pipeline/clean_tweets_flow.py run --production False
+python ds_digital_ads/pipeline/enrich_tweets_flow.py run --production False
 ```
 
 If you would like to run the above commands in production, change the `--production` flag to `True`.
