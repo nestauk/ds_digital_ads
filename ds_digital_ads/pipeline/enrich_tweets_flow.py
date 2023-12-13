@@ -48,7 +48,7 @@ class EnrichTweetsFlow(FlowSpec):
             BUCKET_NAME, RAW_DATA_COLLECTION_FOLDER, file_types=["*.json"]
         )
 
-        raw_tweet_files = raw_tweet_files if self.production else raw_tweet_files[:3]
+        raw_tweet_files = raw_tweet_files if self.production else raw_tweet_files[:5]
 
         all_tweets_dfs = []
         self.media_data = []
@@ -74,6 +74,7 @@ class EnrichTweetsFlow(FlowSpec):
         clean and create media dataframe from raw data.
         """
         self.media_df = pd.DataFrame(self.media_data)
+        print(self.media_df.columns)
         self.media_df["public_metrics"] = self.media_df["public_metrics"].apply(
             lambda x: x["view_count"] if isinstance(x, dict) else None
         )
