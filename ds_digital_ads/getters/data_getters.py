@@ -65,10 +65,12 @@ def save_to_s3(bucket_name, output_var, output_file_dir):
     ):
         image_data = BytesIO(output_var)
         obj.put(Body=image_data)
-    else:
+    elif fnmatch(output_file_dir, "*.json"):
         obj.put(Body=json.dumps(output_var, cls=CustomJsonEncoder))
-
-    logger.info(f"Saved to s3://{bucket_name} + {output_file_dir} ...")
+    else:
+        logger.error(
+            'Function not supported for file type other than "*.csv", "*.parquet", "*.jsonl.gz", "*.jsonl", "*.json", "*.png", "*.jpeg".'
+        )
 
 
 def save_images_to_s3(
