@@ -100,7 +100,7 @@ class EnrichTweetsFlow(FlowSpec):
             lambda x: x["media_keys"] if x else None
         )
 
-        # add public metrics to the beggining of the df
+        # add public metrics to the beginning of the df
         public_metrics_df = (
             self.all_tweets_df["public_metrics"]
             .apply(pd.Series)
