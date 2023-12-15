@@ -63,6 +63,7 @@ def get_serp_data(params_list: list) -> list:
             logger.info(
                 f'API call successful for {params["advertiser_id"]}, {params["creative_format"]}'
             )
+            serp_data.append(params)
         except:
             logger.warning(
                 f'API call failed for {params["advertiser_id"]}, {params["creative_format"]}'
@@ -71,7 +72,7 @@ def get_serp_data(params_list: list) -> list:
 
         # Pause between calls
         time.sleep(random.randint(1, 5))
-        serp_data.append(params)
+
     return serp_data
 
 
@@ -79,7 +80,7 @@ def collect_save_ads(filename: str, test_mode=True) -> list:
     """Collects and saves the data from the Serp API"""
     params_list = create_list_query_params(query_parameters_serp)
 
-    if test_mode:
+    if test_mode == True:
         json_file_path = f"data_collection/google_ads/raw_json/{filename}_test.json"
         results = get_serp_data(params_list[0:2])
         save_to_s3(BUCKET_NAME, results, json_file_path)
@@ -88,6 +89,33 @@ def collect_save_ads(filename: str, test_mode=True) -> list:
         results = get_serp_data(params_list)
         save_to_s3(BUCKET_NAME, results, json_file_path)
     return results
+
+
+def get_image_list(results: list) -> list:
+    """Takes in the full list of results, and returns a list of dictionaries containing
+    the advertiser id, URL and format of the ad for text and images. With current results, returns 10 links
+    """
+
+    image_list = []
+
+    for i in range(0, len(results)):
+        print(i)
+        if (
+            "total_results" in results[i]["results"]["search_information"]
+        ):  # Only select non-empty results
+            # Iterate through the API results, one per ad, and append to list
+            for j in range(0, len(results[i]["results"]["ad_creatives"])):
+                if results[i]["results"]["ad_creatives"][j]["format"] == "video":
+                    pass
+                else:
+                    image_dictionary = {
+                        "id": results[i]["advertiser_id"],
+                        "image": results[i]["results"]["ad_creatives"][j]["image"],
+                        "format": results[i]["results"]["ad_creatives"][j]["format"],
+                    }
+                    image_list.append(image_dictionary)
+
+    return image_list
 
 
 if __name__ == "__main__":
