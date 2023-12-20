@@ -8,11 +8,15 @@ To add a BEARER_TOKEN to an `.env` file at the root of your directory, run the f
 echo "BEARER_TOKEN=your_actual_token" >> ds_digital_ads/.env
 ```
 
+### Collecting tweets
+
 To collect tweets from a defined list of gambling related twitter accounts in the last seven days, run the following command:
 
 ```
 python ds_digital_ads/pipeline/collect_tweets_flow.py run --production False
 ```
+
+### Enriching the collected tweets
 
 To clean the raw collected tweets by:
 
