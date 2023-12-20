@@ -122,19 +122,3 @@ digital_ads_ruleset_twitter = [
     {"value": f"from:{handle} -is:retweet has:media", "tag": f"{handle}_promotions"}
     for handle in TWITTER_HANDLES
 ]
-
-
-"""
-Utils for google ads data collection and enrichment
-"""
-
-
-query_parameters_serp = {
-    "engine": "google_ads_transparency_center",
-    "advertiser_id": [
-        advertiser["google_id"] for advertiser in gambling_advertisers_uk.values()
-    ],
-    "region": "2826",
-    "creative_format": ["text", "image", "video"],
-    "api_key": "",
-}
