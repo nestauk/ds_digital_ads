@@ -122,8 +122,3 @@ digital_ads_ruleset_twitter = [
     {"value": f"from:{handle} -is:retweet has:media", "tag": f"{handle}_promotions"}
     for handle in TWITTER_HANDLES
 ]
-
-
-"""
-Utils for google ads data collection and enrichment
-"""
