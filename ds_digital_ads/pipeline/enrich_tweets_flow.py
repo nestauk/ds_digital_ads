@@ -62,7 +62,7 @@ class EnrichTweetsFlow(FlowSpec):
 
                 self.media_data.extend(tweets["includes"]["media"])
                 all_tweets_dfs.append(tweet_df)
-                self.all_tweets = name
+                self.all_tweets[name] = tweets
 
         self.all_tweets_df = pd.concat(all_tweets_dfs)
 
@@ -74,7 +74,6 @@ class EnrichTweetsFlow(FlowSpec):
         clean and create media dataframe from raw data.
         """
         self.media_df = pd.DataFrame(self.media_data)
-        print(self.media_df.columns)
         self.media_df["public_metrics"] = self.media_df["public_metrics"].apply(
             lambda x: x["view_count"] if isinstance(x, dict) else None
         )
@@ -97,7 +96,7 @@ class EnrichTweetsFlow(FlowSpec):
             created_at=lambda x: pd.to_datetime(x["created_at"])
         )
         self.all_tweets_df["media_id"] = self.all_tweets_df["attachments"].apply(
-            lambda x: x["media_keys"] if x else None
+            lambda x: x["media_keys"] if isinstance(x, dict) else None
         )
 
         # add public metrics to the beginning of the df
@@ -175,14 +174,14 @@ class EnrichTweetsFlow(FlowSpec):
         )
         save_to_s3(BUCKET_NAME, self.all_tweets_df, core_path)
 
-        print("save concatenated tweets...")
+        print("saving concatenated tweets...")
         core_concat_path = os.path.join(
             PROCESSED_DATA_COLLECTION_FOLDER,
             f"all_tweets_{str(self.production).lower()}_{date}.json",
         )
         save_to_s3(BUCKET_NAME, self.all_tweets, core_concat_path)
 
-        print("save images...")
+        print("saving images...")
         image_list = self.media_df["url"].unique().tolist()
         save_images_to_s3(
             image_urls=image_list, output_folder=PROCESSED_DATA_COLLECTION_FOLDER
